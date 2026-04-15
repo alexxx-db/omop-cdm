@@ -32,28 +32,27 @@
 
 -- DBTITLE 1,initial configurations
 -- MAGIC %python
--- MAGIC import json
--- MAGIC 
--- MAGIC project_name='omop-cdm-100K'
--- MAGIC omop_version="OMOP531"
--- MAGIC  
--- MAGIC with open(f'/tmp/{project_name}_configs.json','r') as f:
--- MAGIC     paths = json.load(f)
--- MAGIC     base_path = paths['base_path']
--- MAGIC     delta_path = paths['delta_path']
--- MAGIC 
--- MAGIC delta_bronze_path = f'{delta_path}/bronze'
--- MAGIC delta_silver_path = f'{delta_path}/silver/{omop_version}'
--- MAGIC 
--- MAGIC print(f"{omop_version} database tables will be stored in {delta_silver_path}")
+-- MAGIC dbutils.widgets.text("catalog", "hls_omop_dev", "Unity Catalog")
+-- MAGIC dbutils.widgets.text("omop_schema", "omop531", "OMOP CDM schema")
+-- MAGIC dbutils.widgets.text("results_schema", "omop531_results", "Results schema")
+-- MAGIC dbutils.widgets.text("bronze_schema", "bronze", "Bronze schema (read-only here)")
+-- MAGIC
+-- MAGIC catalog = dbutils.widgets.get("catalog")
+-- MAGIC omop_schema = dbutils.widgets.get("omop_schema")
+-- MAGIC results_schema = dbutils.widgets.get("results_schema")
+-- MAGIC bronze_schema = dbutils.widgets.get("bronze_schema")
+-- MAGIC
+-- MAGIC print(f"OMOP CDM tables → {catalog}.{omop_schema}")
+-- MAGIC print(f"Results tables   → {catalog}.{results_schema}")
 
 -- COMMAND ----------
 
--- DBTITLE 0,Drop Existing Database
+-- DBTITLE 0,Create schemas and select the OMOP schema
 -- MAGIC %python
--- MAGIC sql(f"DROP DATABASE IF EXISTS {omop_version} CASCADE;")
--- MAGIC sql(f"CREATE DATABASE IF NOT EXISTS {omop_version} LOCATION '{delta_silver_path}'")
--- MAGIC sql(f"USE {omop_version};")
+-- MAGIC spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{omop_schema}`")
+-- MAGIC spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{results_schema}`")
+-- MAGIC spark.sql(f"USE CATALOG `{catalog}`")
+-- MAGIC spark.sql(f"USE SCHEMA `{omop_schema}`")
 
 -- COMMAND ----------
 
@@ -884,10 +883,12 @@ OR REPLACE TABLE DOSE_ERA (
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC sql(f"DROP DATABASE IF EXISTS {omop_version}Results CASCADE;")
--- MAGIC sql(f"CREATE DATABASE IF NOT EXISTS {omop_version}Results LOCATION '{delta_path}'")
--- MAGIC sql(f"USE {omop_version}Results;")
+-- MAGIC %python
+-- MAGIC # Switch to the results schema so cohort / cohort_definition / COHORT_ATTRIBUTE DDLs
+-- MAGIC # below land under `{catalog}.{results_schema}` rather than the OMOP schema.
+-- MAGIC # (The original notebook had this block inside `%md`, so the DDLs actually ran
+-- MAGIC # against the OMOP schema — we fix that here.)
+-- MAGIC spark.sql(f"USE SCHEMA `{results_schema}`")
 
 -- COMMAND ----------
 
@@ -944,6 +945,11 @@ OR REPLACE TABLE COHORT_ATTRIBUTE (
 
 -- MAGIC %md
 -- MAGIC ## Check OMOP 5.3.1 Metadata Version
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC spark.sql(f"USE SCHEMA `{omop_schema}`")
 
 -- COMMAND ----------
 

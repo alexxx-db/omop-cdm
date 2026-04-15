@@ -185,7 +185,7 @@ display(incidence_rate_df)
 
 # MAGIC %md
 # MAGIC ## 4. Persist cohort + cohort definition (idempotent)
-# MAGIC `MERGE` keeps re-runs of the job safe — the original R notebook used `INSERT`, which duplicated rows on every retry. We write definition rows to `cohort_definition` and member rows to `cohort`.
+# MAGIC `MERGE` keeps re-runs of the job safe — the original R notebook used `INSERT`, which duplicated rows on every retry. We write definition rows to `{results_schema}.cohort_definition` and member rows to `{results_schema}.cohort` (per OMOP convention, cohorts live in the results schema — notebook 2 creates them there).
 
 # COMMAND ----------
 
@@ -203,7 +203,7 @@ outcome_cohort_description = (
 
 spark.sql(
     f"""
-    MERGE INTO {omop}.cohort_definition t
+    MERGE INTO {results}.cohort_definition t
     USING (
       SELECT 1 AS cohort_definition_id,
              'CHF_cohort'          AS cohort_definition_name,
@@ -232,7 +232,7 @@ spark.sql(
 # Replace members for these two cohort_definition_ids so re-runs stay idempotent.
 spark.sql(
     f"""
-    MERGE INTO {omop}.cohort t
+    MERGE INTO {results}.cohort t
     USING chf_cohort s
       ON t.cohort_definition_id = s.cohort_definition_id
      AND t.subject_id           = s.subject_id
@@ -242,7 +242,7 @@ spark.sql(
     """
 )
 
-display(spark.sql(f"SELECT cohort_definition_id, COUNT(*) AS n FROM {omop}.cohort GROUP BY cohort_definition_id"))
+display(spark.sql(f"SELECT cohort_definition_id, COUNT(*) AS n FROM {results}.cohort GROUP BY cohort_definition_id"))
 
 # COMMAND ----------
 

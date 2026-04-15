@@ -16,49 +16,82 @@
 
 -- DBTITLE 1, config
 -- MAGIC %python
--- MAGIC omop_version="OMOP531"
--- MAGIC project_name='omop-cdm-100K'
--- MAGIC 
--- MAGIC 
--- MAGIC vocab_s3_path = "s3://hls-eng-data-public/data/rwe/omop-vocabs/"
--- MAGIC 
--- MAGIC print(f"Using OMOP version {omop_version}")
--- MAGIC print(f"Using vocabulary tables in {vocab_s3_path}")
--- MAGIC spark.sql(f"USE {omop_version}")
--- MAGIC 
--- MAGIC display(dbutils.fs.ls(vocab_s3_path))
+-- MAGIC dbutils.widgets.text("catalog", "hls_omop_dev", "Unity Catalog")
+-- MAGIC dbutils.widgets.text("omop_schema", "omop531", "OMOP CDM schema")
+-- MAGIC dbutils.widgets.text("bronze_schema", "bronze", "Bronze schema (holds the landing volume)")
+-- MAGIC dbutils.widgets.text("landing_volume", "landing", "Landing volume")
+-- MAGIC dbutils.widgets.text(
+-- MAGIC     "vocab_path",
+-- MAGIC     "",
+-- MAGIC     "Vocabulary source override (defaults to <landing_volume>/vocab)",
+-- MAGIC )
+-- MAGIC
+-- MAGIC catalog = dbutils.widgets.get("catalog")
+-- MAGIC omop_schema = dbutils.widgets.get("omop_schema")
+-- MAGIC bronze_schema = dbutils.widgets.get("bronze_schema")
+-- MAGIC landing_volume = dbutils.widgets.get("landing_volume")
+-- MAGIC vocab_path_override = dbutils.widgets.get("vocab_path").strip()
+-- MAGIC
+-- MAGIC vocab_path = (
+-- MAGIC     vocab_path_override
+-- MAGIC     or f"/Volumes/{catalog}/{bronze_schema}/{landing_volume}/vocab"
+-- MAGIC )
+-- MAGIC print(f"Loading OHDSI vocabularies into {catalog}.{omop_schema} from {vocab_path}")
+-- MAGIC spark.sql(f"USE CATALOG `{catalog}`")
+-- MAGIC spark.sql(f"USE SCHEMA `{omop_schema}`")
+-- MAGIC
+-- MAGIC display(dbutils.fs.ls(vocab_path))
 
 -- COMMAND ----------
 
 -- MAGIC %md
 -- MAGIC ## Loading vocabularies as delta tables
+-- MAGIC Vocabulary CSVs are expected under the landing volume at `vocab/`. Download the desired release from [Athena](https://athena.ohdsi.org/search-terms/start) and upload via the UC Volume browser or `databricks fs cp`.
 
 -- COMMAND ----------
 
 -- MAGIC %python
--- MAGIC 
 -- MAGIC from pyspark.sql.functions import to_date
--- MAGIC spark.sql("set spark.sql.legacy.timeParserPolicy=LEGACY")
--- MAGIC spark.sql("set spark.sql.legacy.parquet.datetimeRebaseModeInWrite=LEGACY")
--- MAGIC 
--- MAGIC tablelist = ["CONCEPT","VOCABULARY","CONCEPT_ANCESTOR","CONCEPT_RELATIONSHIP","RELATIONSHIP","CONCEPT_SYNONYM","DOMAIN","CONCEPT_CLASS","DRUG_STRENGTH"]
--- MAGIC for table in tablelist:
--- MAGIC   df = spark.read.csv(f'{vocab_s3_path}/{table}.csv.gz', inferSchema=True, header=True, dateFormat="yyyy-MM-dd")
--- MAGIC   if table in ["CONCEPT","CONCEPT_RELATIONSHIP","DRUG_STRENGTH"] :
--- MAGIC     df = df.withColumn('valid_start_date', to_date(df.valid_start_date,'yyyy-MM-dd')).withColumn('valid_end_date', to_date(df.valid_end_date,'yyyy-MM-dd'))
--- MAGIC     
--- MAGIC   df.write.format('delta').mode('overwrite').option('overwriteSchema','true').saveAsTable(omop_version+'.'+table)
+-- MAGIC spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+-- MAGIC spark.conf.set("spark.sql.legacy.parquet.datetimeRebaseModeInWrite", "LEGACY")
+-- MAGIC
+-- MAGIC vocab_tables = [
+-- MAGIC     "CONCEPT", "VOCABULARY", "CONCEPT_ANCESTOR", "CONCEPT_RELATIONSHIP",
+-- MAGIC     "RELATIONSHIP", "CONCEPT_SYNONYM", "DOMAIN", "CONCEPT_CLASS", "DRUG_STRENGTH",
+-- MAGIC ]
+-- MAGIC DATE_COL_TABLES = {"CONCEPT", "CONCEPT_RELATIONSHIP", "DRUG_STRENGTH"}
+-- MAGIC
+-- MAGIC for table in vocab_tables:
+-- MAGIC     src = f"{vocab_path}/{table}.csv.gz"
+-- MAGIC     df = (
+-- MAGIC         spark.read
+-- MAGIC         .option("header", "true")
+-- MAGIC         .option("inferSchema", "true")
+-- MAGIC         .option("dateFormat", "yyyy-MM-dd")
+-- MAGIC         .csv(src)
+-- MAGIC     )
+-- MAGIC     if table in DATE_COL_TABLES:
+-- MAGIC         df = (
+-- MAGIC             df.withColumn("valid_start_date", to_date("valid_start_date", "yyyy-MM-dd"))
+-- MAGIC               .withColumn("valid_end_date",   to_date("valid_end_date",   "yyyy-MM-dd"))
+-- MAGIC         )
+-- MAGIC     fqn = f"`{catalog}`.`{omop_schema}`.`{table}`"
+-- MAGIC     (
+-- MAGIC         df.write.format("delta")
+-- MAGIC           .mode("overwrite")
+-- MAGIC           .option("overwriteSchema", "true")
+-- MAGIC           .saveAsTable(fqn)
+-- MAGIC     )
 
 -- COMMAND ----------
 
 -- DBTITLE 1,display tables and counts of records
 -- MAGIC %python
--- MAGIC tablecount = "SELECT '-' AS table, 0 as recs"
--- MAGIC for table in tablelist:
--- MAGIC   tablecount += " UNION SELECT '"+table+"', COUNT(1) FROM "+omop_version+"."+table
--- MAGIC tablecount += " ORDER BY 2 DESC"
--- MAGIC 
--- MAGIC display(spark.sql(tablecount))
+-- MAGIC counts_sql = " UNION ALL ".join(
+-- MAGIC     f"SELECT '{t}' AS table_name, COUNT(*) AS recs FROM `{catalog}`.`{omop_schema}`.`{t}`"
+-- MAGIC     for t in vocab_tables
+-- MAGIC )
+-- MAGIC display(spark.sql(counts_sql + " ORDER BY recs DESC"))
 
 -- COMMAND ----------
 

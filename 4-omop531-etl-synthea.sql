@@ -17,38 +17,41 @@
 -- COMMAND ----------
 
 -- MAGIC %python
--- MAGIC import json
--- MAGIC 
--- MAGIC project_name='omop-cdm-100K'
--- MAGIC omop_version="OMOP531"
--- MAGIC  
--- MAGIC with open(f'/tmp/{project_name}_configs.json','r') as f:
--- MAGIC     paths = json.load(f)
--- MAGIC     base_path = paths['base_path']
--- MAGIC     delta_path = paths['delta_path']
--- MAGIC 
--- MAGIC delta_bronze_path = f'{delta_path}/bronze'
--- MAGIC delta_silver_path = f'{delta_path}/silver/{omop_version}'
+-- MAGIC dbutils.widgets.text("catalog", "hls_omop_dev", "Unity Catalog")
+-- MAGIC dbutils.widgets.text("bronze_schema", "bronze", "Bronze schema (source)")
+-- MAGIC dbutils.widgets.text("omop_schema", "omop531", "OMOP CDM schema (target)")
+-- MAGIC
+-- MAGIC catalog = dbutils.widgets.get("catalog")
+-- MAGIC bronze_schema = dbutils.widgets.get("bronze_schema")
+-- MAGIC omop_schema = dbutils.widgets.get("omop_schema")
+-- MAGIC
+-- MAGIC print(f"Synthea bronze tables: {catalog}.{bronze_schema}.*")
+-- MAGIC print(f"Writing OMOP tables into: {catalog}.{omop_schema}")
 
 -- COMMAND ----------
 
 -- MAGIC %python
--- MAGIC table_names =['allergies','careplans','conditions','devices','encounters','imaging_studies',\
--- MAGIC               'immunizations','medications','observations','organizations','patients',\
--- MAGIC               'payer_transitions','payers','procedures','providers','supplies']
--- MAGIC for table_name in table_names:
--- MAGIC     sql(f"""
--- MAGIC     CREATE OR REPLACE TEMPORARY VIEW {table_name} AS (
--- MAGIC       SELECT * FROM delta.`{delta_bronze_path}/{table_name}`
--- MAGIC       )
--- MAGIC     """
+-- MAGIC # Create one session-scoped temp view per Synthea table, sourced from the
+-- MAGIC # UC-managed bronze tables (no path-based `delta.`<path>`` reads — those
+-- MAGIC # require DBFS, which is not available on serverless).
+-- MAGIC synthea_tables = [
+-- MAGIC     "allergies", "careplans", "conditions", "devices", "encounters",
+-- MAGIC     "imaging_studies", "immunizations", "medications", "observations",
+-- MAGIC     "organizations", "patients", "payer_transitions", "payers",
+-- MAGIC     "procedures", "providers", "supplies",
+-- MAGIC ]
+-- MAGIC for t in synthea_tables:
+-- MAGIC     spark.sql(
+-- MAGIC         f"CREATE OR REPLACE TEMPORARY VIEW `{t}` AS "
+-- MAGIC         f"SELECT * FROM `{catalog}`.`{bronze_schema}`.`{t}`"
 -- MAGIC     )
 
 -- COMMAND ----------
 
--- MAGIC %py
--- MAGIC sql(f"USE {omop_version};")
--- MAGIC print(f"Using OMOP version {omop_version}")
+-- MAGIC %python
+-- MAGIC spark.sql(f"USE CATALOG `{catalog}`")
+-- MAGIC spark.sql(f"USE SCHEMA `{omop_schema}`")
+-- MAGIC print(f"Current schema: {catalog}.{omop_schema}")
 
 -- COMMAND ----------
 
