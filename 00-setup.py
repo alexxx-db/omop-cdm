@@ -1,106 +1,140 @@
 # Databricks notebook source
-# MAGIC %md 
+# MAGIC %md
 # MAGIC You may find this series of notebooks at https://github.com/databricks-industry-solutions/omop-cdm. For more information about this solution accelerator, visit https://www.databricks.com/blog/2021/07/19/unlocking-the-power-of-health-data-with-a-modern-data-lakehouse.html.
 
 # COMMAND ----------
 
-# DBTITLE 0,add widgets
+# MAGIC %md
+# MAGIC # Project Setup
+# MAGIC Resolves Unity Catalog targets, ensures the bronze catalog/schema/volume exist, picks the Synthea source location for the requested `project` profile, and configures the MLflow experiment.
+# MAGIC
+# MAGIC Downstream notebooks read their own job parameters — this notebook no longer writes a `/tmp/*.json` handoff file (that pattern doesn't survive serverless task isolation).
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "hls_omop_dev", "Unity Catalog")
+dbutils.widgets.text("bronze_schema", "bronze", "Bronze schema")
+dbutils.widgets.text("omop_schema", "omop531", "OMOP CDM schema")
+dbutils.widgets.text("results_schema", "omop531_results", "Results schema")
+dbutils.widgets.text("landing_volume", "landing", "Landing volume (under bronze schema)")
+dbutils.widgets.dropdown(
+    "project",
+    "omop-cdm-100K",
+    ["omop-cdm-100K", "omop-cdm-10K", "psm"],
+    "Dataset profile",
+)
+dbutils.widgets.text(
+    "source_path",
+    "",
+    "Optional Synthea CSV source override (defaults to the landing volume)",
+)
+
+catalog = dbutils.widgets.get("catalog")
+bronze_schema = dbutils.widgets.get("bronze_schema")
+omop_schema = dbutils.widgets.get("omop_schema")
+results_schema = dbutils.widgets.get("results_schema")
+landing_volume = dbutils.widgets.get("landing_volume")
+project = dbutils.widgets.get("project")
+source_path_override = dbutils.widgets.get("source_path").strip()
+
+volume_path = f"/Volumes/{catalog}/{bronze_schema}/{landing_volume}"
+source_path = source_path_override or volume_path
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 1. Ensure Unity Catalog objects exist
+# MAGIC The DAB declares these, but running the notebook interactively (outside a bundle deploy) still needs them. `IF NOT EXISTS` keeps this idempotent.
+
+# COMMAND ----------
+
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{bronze_schema}`")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{omop_schema}`")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{results_schema}`")
+spark.sql(
+    f"CREATE VOLUME IF NOT EXISTS `{catalog}`.`{bronze_schema}`.`{landing_volume}`"
+)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Source data
+# MAGIC The original accelerator read Synthea CSVs from public S3 buckets. On serverless + Unity Catalog, arbitrary S3 access requires an [external location](https://docs.databricks.com/aws/en/connect/unity-catalog/external-locations) and storage credential, so the canonical pattern is to stage the CSVs into a UC Volume once.
+# MAGIC
+# MAGIC | Profile | Original public S3 source | Records |
+# MAGIC |---|---|---|
+# MAGIC | `omop-cdm-100K` | `s3://hls-eng-data-public/data/rwe/all-states-90K/` | ~90K patients |
+# MAGIC | `omop-cdm-10K` | `s3://hls-eng-data-public/data/synthea/` | ~10K patients |
+# MAGIC | `psm` | `s3://hls-eng-data-public/data/rwe/dbx-covid-sim/` | COVID sim |
+# MAGIC
+# MAGIC To stage: `databricks fs cp -r s3://.../ dbfs:/Volumes/<catalog>/<bronze_schema>/<volume>/` or use the UC Volume browser.
+
+# COMMAND ----------
+
+PROJECT_SOURCE_HINTS = {
+    "omop-cdm-100K": "s3://hls-eng-data-public/data/rwe/all-states-90K/",
+    "omop-cdm-10K": "s3://hls-eng-data-public/data/synthea/",
+    "psm": "s3://hls-eng-data-public/data/rwe/dbx-covid-sim/",
+}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. MLflow experiment
+# MAGIC Using a Workspace path namespaced under the current user keeps experiments discoverable and avoids collisions across environments.
+
+# COMMAND ----------
+
 import mlflow
-project_name='omop-cdm-100K'
+
+user = (
+    dbutils.notebook.entry_point.getDbutils()
+    .notebook()
+    .getContext()
+    .tags()
+    .apply("user")
+)
+experiment_path = f"/Users/{user}/{project}"
+experiment = mlflow.set_experiment(experiment_path)
 
 # COMMAND ----------
 
-# DBTITLE 1,specify path to raw data for each project
-project_data_paths = {'omop-cdm-100K':"s3://hls-eng-data-public/data/rwe/all-states-90K/","omop-cdm-10K":"s3://hls-eng-data-public/data/synthea/",'psm':"s3://hls-eng-data-public/data/rwe/dbx-covid-sim/"}
+# MAGIC %md
+# MAGIC ## 4. Summary
 
 # COMMAND ----------
 
-# DBTITLE 1,class for project setup
-import mlflow
+summary = {
+    "catalog": catalog,
+    "bronze_schema": bronze_schema,
+    "omop_schema": omop_schema,
+    "results_schema": results_schema,
+    "landing_volume": volume_path,
+    "project": project,
+    "source_path": source_path,
+    "source_hint_original_s3": PROJECT_SOURCE_HINTS.get(project, "n/a"),
+    "mlflow_experiment": experiment.name,
+    "mlflow_experiment_id": experiment.experiment_id,
+}
 
-class SolAccUtil:
-  def __init__(self,project_name,data_path=None,base_path=None):
-    user=dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
-    project_name = project_name.strip().replace(' ','-')
-    self.settings = {}
-    
-    if base_path!=None:
-      base_path=base_path
-    else:
-      base_path = f'/home/{user}/health-lakehouse'
+displayHTML(
+    "<h4>OMOP CDM project settings</h4><ul>"
+    + "".join(f"<li><b>{k}</b> = <code>{v}</code></li>" for k, v in summary.items())
+    + "</ul>"
+)
 
-    if data_path != None:
-      data_path=data_path
-    else:
-      data_path=project_data_paths[project_name]
-     
-    dbutils.fs.mkdirs(base_path)
-    delta_path=f'{base_path}/{project_name}/delta'
-    
-    experiment_name=f'/Users/{user}/{project_name}'
-    if not mlflow.get_experiment_by_name(experiment_name):
-      experiment_id = mlflow.create_experiment(experiment_name)
-      experiment = mlflow.get_experiment(experiment_id)
-    else:
-      experiment = mlflow.get_experiment_by_name(experiment_name)
-      
-    self.settings['base_path']=base_path
-    self.settings['delta_path']=delta_path
-    self.settings['data_path']=data_path
-    self.settings['experiment_name']=experiment.name
-    self.settings['experiment_id']=experiment.experiment_id
-    self.settings['artifact_location']=experiment.artifact_location
-    self.settings['tags']=experiment.tags
-
-    
-  def load_remote_data(self,url,unpack=False):
-    import requests
-    fname=url.split('/')[-1]
-    r = requests.get(url)
-    print('*'*100)
-    print(f'downloading file {fname} to {self.data_path}')
-    print('*'*100)
-    open(f'/dbfs{self.data_path}/{fname}','wb').write(r.content)
-    if unpack:
-      print(f'unpacking file {fname} into {self.data_path}')
-      import tarfile
-    # open file
-      file = tarfile.open(f'/dbfs{self.data_path}/{fname}')
-      file.extractall(f'/dbfs{self.data_path}')
-      file.close()
-    
-  def print_info(self):
-    _html='<p>'
-    for key,val in self.settings.items():
-      _html+=f'<b>{key}</b> = <i>{val}</i><br>'
-    _html+='</p>'
-    
-    displayHTML(_html)
-    
-  def display_data(self):
-    files=dbutils.fs.ls(f'{self.data_path}')
-    if len(files)==0:
-      print('no data available, please run load_remote_data(<url for the data>)')
-    else:
-      print('*'*100)
-      print(f'data available in {self.data_path} are:')
-      print('*'*100)
-      display(files)
+dbutils.jobs.taskValues.set(key="source_path", value=source_path)
+dbutils.jobs.taskValues.set(key="mlflow_experiment_id", value=experiment.experiment_id)
 
 # COMMAND ----------
 
-# DBTITLE 1,define project settings
-project_settings = SolAccUtil(project_name=project_name)
-
-# COMMAND ----------
-
-# DBTITLE 1,write configurations for later access
-import json 
-with open(f'/tmp/{project_name}_configs.json','w') as f:
-  f.write(json.dumps(project_settings.settings,indent=4))
-f.close()
-
-# COMMAND ----------
-
-# DBTITLE 1,display project settings
-project_settings.print_info()
+# MAGIC %md
+# MAGIC Copyright / License info of the notebook. Copyright Databricks, Inc. [2021]. The source in this notebook is provided subject to the [Databricks License](https://databricks.com/db-license-source).  All included or referenced third party libraries are subject to the licenses set forth below.
+# MAGIC
+# MAGIC |Library Name|Library License|Library License URL|Library Source URL|
+# MAGIC | :-: | :-:| :-: | :-:|
+# MAGIC |Synthea|Apache License 2.0|https://github.com/synthetichealth/synthea/blob/master/LICENSE| https://github.com/synthetichealth/synthea|
+# MAGIC | OHDSI/CommonDataModel| Apache License 2.0 | https://github.com/OHDSI/CommonDataModel/blob/master/LICENSE | https://github.com/OHDSI/CommonDataModel |
+# MAGIC | OHDSI/ETL-Synthea| Apache License 2.0 | https://github.com/OHDSI/ETL-Synthea/blob/master/LICENSE | https://github.com/OHDSI/ETL-Synthea |
+# MAGIC |OHDSI/OMOP-Queries|||https://github.com/OHDSI/OMOP-Queries|
+# MAGIC |The Book of OHDSI | Creative Commons Zero v1.0 Universal license.|https://ohdsi.github.io/TheBookOfOhdsi/index.html#license|https://ohdsi.github.io/TheBookOfOhdsi/|

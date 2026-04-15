@@ -22,6 +22,8 @@ resources:
           default: ${var.landing_volume}
         - name: project
           default: ${var.project_profile}
+        - name: source_path
+          default: ""
 
       # Shared serverless environment for all Python notebook tasks.
       # SQL notebooks don't need environment_key.
@@ -45,12 +47,13 @@ resources:
             notebook_path: ../00-setup.py
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              omop_schema: ${var.omop_schema}
-              results_schema: ${var.results_schema}
-              landing_volume: ${var.landing_volume}
-              project: ${var.project_profile}
+              catalog: "{{job.parameters.catalog}}"
+              bronze_schema: "{{job.parameters.bronze_schema}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              results_schema: "{{job.parameters.results_schema}}"
+              landing_volume: "{{job.parameters.landing_volume}}"
+              project: "{{job.parameters.project}}"
+              source_path: "{{job.parameters.source_path}}"
 
         - task_key: data_ingest
           depends_on:
@@ -60,10 +63,11 @@ resources:
             notebook_path: ../1-data-ingest.py
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              landing_volume: ${var.landing_volume}
-              project: ${var.project_profile}
+              catalog: "{{job.parameters.catalog}}"
+              bronze_schema: "{{job.parameters.bronze_schema}}"
+              landing_volume: "{{job.parameters.landing_volume}}"
+              project: "{{job.parameters.project}}"
+              source_path: "{{tasks.setup.values.source_path}}"
 
         - task_key: cdm_setup
           depends_on:
