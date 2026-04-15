@@ -1,0 +1,22 @@
+resources:
+  schemas:
+    bronze:
+      catalog_name: ${var.catalog}
+      name: ${var.bronze_schema}
+      comment: "Raw Synthea CSV ingested to Delta"
+    omop531:
+      catalog_name: ${var.catalog}
+      name: ${var.omop_schema}
+      comment: "OMOP 5.3.1 CDM tables + OHDSI vocabulary"
+    omop531_results:
+      catalog_name: ${var.catalog}
+      name: ${var.results_schema}
+      comment: "OMOP cohort + Achilles results"
+
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.bronze_schema}
+      name: ${var.landing_volume}
+      volume_type: MANAGED
+      comment: "Landing zone for Synthea CSVs and OHDSI vocabulary archives"

@@ -1,0 +1,45 @@
+bundle:
+  name: omop-cdm
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: "Unity Catalog to hold bronze + OMOP schemas"
+    default: hls_omop_dev
+  bronze_schema:
+    description: "Schema for raw Synthea Delta tables"
+    default: bronze
+  omop_schema:
+    description: "Schema for OMOP 5.3.1 CDM + vocabulary tables"
+    default: omop531
+  results_schema:
+    description: "Schema for cohort / Achilles results"
+    default: omop531_results
+  landing_volume:
+    description: "Volume (under bronze_schema) used to stage Synthea CSVs and OHDSI vocab"
+    default: landing
+  project_profile:
+    description: "Synthea dataset size profile consumed by 00-setup/1-data-ingest"
+    default: omop-cdm-100K
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: DEFAULT
+    variables:
+      catalog: hls_omop_dev
+
+  prod:
+    mode: production
+    workspace:
+      profile: DEFAULT
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: hls_omop_prod
+      project_profile: omop-cdm-100K
+    run_as:
+      user_name: a8barreto@gmail.com

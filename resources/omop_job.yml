@@ -1,0 +1,137 @@
+resources:
+  jobs:
+    omop_cdm_build:
+      name: "[${bundle.target}] OMOP CDM Build"
+      timeout_seconds: 7200
+      max_concurrent_runs: 1
+      tags:
+        usage: solacc
+        group: HLS
+        project: omop-cdm
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: bronze_schema
+          default: ${var.bronze_schema}
+        - name: omop_schema
+          default: ${var.omop_schema}
+        - name: results_schema
+          default: ${var.results_schema}
+        - name: landing_volume
+          default: ${var.landing_volume}
+        - name: project
+          default: ${var.project_profile}
+
+      # Shared serverless environment for all Python notebook tasks.
+      # SQL notebooks don't need environment_key.
+      environments:
+        - environment_key: omop_env
+          spec:
+            client: "2"
+            dependencies: []
+
+      tasks:
+        - task_key: readme
+          notebook_task:
+            notebook_path: ../0-README.py
+            source: WORKSPACE
+
+        - task_key: setup
+          depends_on:
+            - task_key: readme
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../00-setup.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              omop_schema: ${var.omop_schema}
+              results_schema: ${var.results_schema}
+              landing_volume: ${var.landing_volume}
+              project: ${var.project_profile}
+
+        - task_key: data_ingest
+          depends_on:
+            - task_key: setup
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../1-data-ingest.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              landing_volume: ${var.landing_volume}
+              project: ${var.project_profile}
+
+        - task_key: cdm_setup
+          depends_on:
+            - task_key: data_ingest
+          notebook_task:
+            notebook_path: ../2-omop531-cdm-setup.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              omop_schema: ${var.omop_schema}
+              results_schema: ${var.results_schema}
+              bronze_schema: ${var.bronze_schema}
+
+        - task_key: vocab_setup
+          depends_on:
+            - task_key: cdm_setup
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../3-omop-vocab-setup.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              omop_schema: ${var.omop_schema}
+              landing_volume: ${var.landing_volume}
+
+        - task_key: etl_synthea
+          depends_on:
+            - task_key: vocab_setup
+          notebook_task:
+            notebook_path: ../4-omop531-etl-synthea.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              omop_schema: ${var.omop_schema}
+
+        # 5-CHF-cohort-building.r is R — NOT supported on serverless.
+        # Port to Python/Spark SQL before enabling, or run on a classic cluster task.
+        # - task_key: chf_cohort
+        #   depends_on:
+        #     - task_key: etl_synthea
+        #   notebook_task:
+        #     notebook_path: ../5-CHF-cohort-building.r
+        #     source: WORKSPACE
+
+        - task_key: drug_analysis
+          depends_on:
+            - task_key: etl_synthea
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../6-drug-analysis.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              omop_schema: ${var.omop_schema}
+              results_schema: ${var.results_schema}
+
+        - task_key: sample_queries
+          depends_on:
+            - task_key: drug_analysis
+          notebook_task:
+            notebook_path: ../7-sample-omop-queries.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              omop_schema: ${var.omop_schema}
+              results_schema: ${var.results_schema}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
