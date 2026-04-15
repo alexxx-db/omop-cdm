@@ -100,18 +100,21 @@ resources:
               bronze_schema: ${var.bronze_schema}
               omop_schema: ${var.omop_schema}
 
-        # 5-CHF-cohort-building.r is R — NOT supported on serverless.
-        # Port to Python/Spark SQL before enabling, or run on a classic cluster task.
-        # - task_key: chf_cohort
-        #   depends_on:
-        #     - task_key: etl_synthea
-        #   notebook_task:
-        #     notebook_path: ../5-CHF-cohort-building.r
-        #     source: WORKSPACE
+        - task_key: chf_cohort
+          depends_on:
+            - task_key: etl_synthea
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../5-CHF-cohort-building.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              omop_schema: ${var.omop_schema}
+              results_schema: ${var.results_schema}
 
         - task_key: drug_analysis
           depends_on:
-            - task_key: etl_synthea
+            - task_key: chf_cohort
           environment_key: omop_env
           notebook_task:
             notebook_path: ../6-drug-analysis.py
