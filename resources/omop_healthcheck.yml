@@ -1,0 +1,52 @@
+resources:
+  jobs:
+    omop_healthcheck:
+      name: "[${bundle.target}] OMOP Healthcheck"
+      timeout_seconds: 300
+      max_concurrent_runs: 1
+      tags:
+        usage: monitoring
+        group: HLS
+        project: omop-cdm
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: omop_schema
+          default: ${var.omop_schema}
+        - name: app_url
+          default: ${var.app_url}
+
+      environments:
+        - environment_key: healthcheck_env
+          spec:
+            client: "2"
+            dependencies: []
+
+      tasks:
+        - task_key: healthcheck
+          environment_key: healthcheck_env
+          notebook_task:
+            notebook_path: ../src/healthcheck/omop_healthcheck.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              app_url: "{{job.parameters.app_url}}"
+
+      schedule:
+        quartz_cron_expression: ${var.healthcheck_cron}
+        timezone_id: ${var.schedule_timezone}
+        pause_status: ${var.healthcheck_pause_status}
+
+      email_notifications:
+        on_failure:
+          - ${var.notifications_email}
+        no_alert_for_skipped_runs: true
+
+      webhook_notifications:
+        on_failure: ${var.slack_webhook_destinations}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

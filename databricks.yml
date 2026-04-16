@@ -76,6 +76,21 @@ variables:
     description: "PAUSED or UNPAUSED. Non-prod targets keep this PAUSED."
     default: PAUSED
 
+  healthcheck_cron:
+    description: "Quartz cron for the healthcheck job. Default: every 15 minutes."
+    default: "0 */15 * * * ?"
+
+  healthcheck_pause_status:
+    description: "PAUSED or UNPAUSED. Non-prod targets keep this PAUSED."
+    default: PAUSED
+
+  app_url:
+    description: |
+      Base URL of the deployed OMOP Explorer (FastAPI) app, e.g.
+      https://omop-explorer-prod.cloud.databricks.com.
+      Empty → skip app-layer probes in the healthcheck.
+    default: ""
+
   slack_webhook_destinations:
     description: |
       List of webhook notification destination IDs to fire on job start/success/failure.
@@ -113,6 +128,9 @@ targets:
       catalog: hls_omop_prod
       project_profile: omop-cdm-100K
       schedule_pause_status: UNPAUSED  # nightly refresh is live only on prod
+      healthcheck_pause_status: UNPAUSED
+      # Uncomment and set your deployed app URL to enable app-layer probes:
+      # app_url: "https://omop-explorer-prod.cloud.databricks.com"
       # Uncomment and paste in your Slack webhook destination ID(s) to enable:
       # slack_webhook_destinations:
       #   - id: "REPLACE_WITH_NOTIFICATION_DESTINATION_ID"
