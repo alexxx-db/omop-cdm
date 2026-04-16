@@ -1,2 +1,3 @@
 -r requirements.txt
+-e ../omop_lib
 pytest>=8.0,<9.0

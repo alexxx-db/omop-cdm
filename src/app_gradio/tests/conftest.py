@@ -1,8 +1,7 @@
-"""Fixtures for the Gradio flavor's handler tests.
+"""Fixtures for Gradio handler tests.
 
-The app module runs real code at import time (builds the `gr.Blocks` UI and
-instantiates `databricks.sdk.Config`), so we seed auth env vars *before* the
-import, and patch `_token` / `_query` so handlers never hit the wire.
+Mirrors the FastAPI conftest. `queries` + `diagnostics` are mocked wholesale
+since their logic is covered in `src/omop_lib/tests/`.
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Config() auto-detects auth on construction; give it enough to succeed.
 os.environ.setdefault("DATABRICKS_CATALOG", "test_cat")
 os.environ.setdefault("DATABRICKS_OMOP_SCHEMA", "test_schema")
 os.environ.setdefault("DATABRICKS_WAREHOUSE_ID", "test_wh_id")
@@ -35,19 +33,21 @@ def app_module(monkeypatch):
 
 
 @pytest.fixture
-def fake_query(app_module, monkeypatch):
-    """Replaces app._query. Per test set .return_value or .side_effect."""
-    import pandas as pd
+def fake_queries(app_module, monkeypatch):
+    m = MagicMock()
+    monkeypatch.setattr(app_module, "queries", m)
+    return m
 
-    m = MagicMock(return_value=pd.DataFrame())
-    monkeypatch.setattr(app_module, "_query", m)
+
+@pytest.fixture
+def fake_diagnostics(app_module, monkeypatch):
+    m = MagicMock()
+    monkeypatch.setattr(app_module, "diagnostics", m)
     return m
 
 
 @pytest.fixture
 def fake_request():
-    """Minimal `gr.Request` stand-in. Tests that care about identity mutate
-    `req.headers` directly."""
     req = MagicMock()
     req.headers = {}
     return req

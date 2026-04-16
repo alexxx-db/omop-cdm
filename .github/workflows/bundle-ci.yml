@@ -59,6 +59,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - flavor: omop_lib
+            dir: src/omop_lib
           - flavor: fastapi
             dir: src/app
           - flavor: gradio
