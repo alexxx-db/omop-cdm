@@ -1,0 +1,18 @@
+resources:
+  apps:
+    omop_explorer_gradio:
+      name: omop-explorer-gradio-${bundle.target}
+      description: "Gradio flavor of the OMOP Explorer. Same UC functions as omop_explorer, different UI."
+      source_code_path: ../src/app_gradio
+      resources:
+        - name: warehouse
+          description: "SQL warehouse used to invoke UC functions."
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: omop_catalog
+          description: "OMOP Unity Catalog — needs USE CATALOG + USE SCHEMA + EXECUTE on the functions."
+          uc_securable:
+            securable_full_name: ${var.catalog}
+            securable_type: CATALOG
+            permission: USE_CATALOG

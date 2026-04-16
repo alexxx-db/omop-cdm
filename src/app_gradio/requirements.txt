@@ -1,0 +1,4 @@
+gradio>=5.0,<6.0
+pandas>=2.0,<3.0
+databricks-sql-connector==3.7.0
+databricks-sdk==0.38.0

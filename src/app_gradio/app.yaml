@@ -1,0 +1,11 @@
+command:
+  - python
+  - app.py
+
+env:
+  - name: DATABRICKS_CATALOG
+    value: ${var.catalog}
+  - name: DATABRICKS_OMOP_SCHEMA
+    value: ${var.omop_schema}
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: ${var.warehouse_id}
