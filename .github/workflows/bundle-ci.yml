@@ -52,9 +52,42 @@ jobs:
       - name: Validate (prod target)
         run: databricks bundle validate -t prod
 
+  test:
+    name: Pytest (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: fastapi
+            dir: src/app
+          - flavor: gradio
+            dir: src/app_gradio
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: omop-cdm/${{ matrix.dir }}/requirements-dev.txt
+
+      - name: Install deps
+        run: pip install -r ${{ matrix.dir }}/requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest ${{ matrix.dir }}/tests -v --junitxml=pytest-${{ matrix.flavor }}.xml
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-${{ matrix.flavor }}
+          path: omop-cdm/pytest-${{ matrix.flavor }}.xml
+
   deploy-staging:
     name: Deploy to staging
-    needs: validate
+    needs: [validate, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
