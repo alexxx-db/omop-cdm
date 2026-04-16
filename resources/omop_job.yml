@@ -145,6 +145,22 @@ resources:
               omop_schema: "{{job.parameters.omop_schema}}"
               results_schema: "{{job.parameters.results_schema}}"
 
+      schedule:
+        quartz_cron_expression: ${var.schedule_cron}
+        timezone_id: ${var.schedule_timezone}
+        pause_status: ${var.schedule_pause_status}
+
+      email_notifications:
+        on_failure:
+          - ${var.notifications_email}
+        no_alert_for_skipped_runs: true
+
+      # Slack notifications via pre-created notification destinations.
+      # Override `slack_webhook_destinations` per target to enable; defaults to [].
+      webhook_notifications:
+        on_failure: ${var.slack_webhook_destinations}
+        on_success: ${var.slack_webhook_destinations}
+
       permissions:
         - level: CAN_VIEW
           group_name: users

@@ -1,3 +1,21 @@
+# OMOP CDM on Databricks — Declarative Asset Bundle
+#
+# Deploy:
+#   databricks bundle validate                # lint the bundle
+#   databricks bundle deploy -t dev           # deploy to dev (default)
+#   databricks bundle deploy -t staging
+#   databricks bundle deploy -t prod
+#
+# Ad-hoc variable overrides at deploy time:
+#   databricks bundle deploy -t dev --var="catalog=my_sandbox,omop_schema=cdm"
+#
+# Run the job once deployed:
+#   databricks bundle run omop_cdm_build -t dev
+#
+# Override job parameters at run time (does NOT re-deploy):
+#   databricks bundle run omop_cdm_build -t prod \
+#     --params catalog=alt_prod,project=omop-cdm-10K,source_path=/Volumes/.../synthea_small/
+
 bundle:
   name: omop-cdm
 
@@ -6,40 +24,92 @@ include:
 
 variables:
   catalog:
-    description: "Unity Catalog to hold bronze + OMOP schemas"
+    description: "Unity Catalog holding bronze + OMOP + results schemas. Must exist before first deploy."
     default: hls_omop_dev
+
   bronze_schema:
-    description: "Schema for raw Synthea Delta tables"
+    description: "Schema for raw Synthea Delta tables and the landing volume."
     default: bronze
+
   omop_schema:
-    description: "Schema for OMOP 5.3.1 CDM + vocabulary tables"
+    description: "Schema for OMOP 5.3.1 CDM + vocabulary tables."
     default: omop531
+
   results_schema:
-    description: "Schema for cohort / Achilles results"
+    description: "Schema for cohort / Achilles / derived results."
     default: omop531_results
+
   landing_volume:
-    description: "Volume (under bronze_schema) used to stage Synthea CSVs and OHDSI vocab"
+    description: "Managed volume under bronze_schema used to stage Synthea CSVs and OHDSI vocabulary archives."
     default: landing
+
   project_profile:
-    description: "Synthea dataset size profile consumed by 00-setup/1-data-ingest"
+    description: "Synthea dataset profile. One of: omop-cdm-100K, omop-cdm-10K, psm."
     default: omop-cdm-100K
+
+  source_path:
+    description: "Optional override for Synthea CSV source. Empty → /Volumes/{catalog}/{bronze_schema}/{landing_volume}."
+    default: ""
+
+  databricks_profile:
+    description: "Profile from ~/.databrickscfg used for deploy-time auth."
+    default: DEFAULT
+
+  notifications_email:
+    description: "Email for job failure notifications."
+    default: a8barreto@gmail.com
+
+  schedule_cron:
+    description: "Quartz cron expression for the nightly refresh. Default: 02:00 UTC daily."
+    default: "0 0 2 * * ?"
+
+  schedule_timezone:
+    description: "IANA timezone for the schedule."
+    default: UTC
+
+  schedule_pause_status:
+    description: "PAUSED or UNPAUSED. Non-prod targets keep this PAUSED."
+    default: PAUSED
+
+  slack_webhook_destinations:
+    description: |
+      List of webhook notification destination IDs to fire on job start/success/failure.
+      Create each via the Databricks Admin UI → Notifications (or `databricks notification-destinations create`)
+      pointing at a Slack incoming webhook, then override per target. Default: [] (no Slack).
+      Example override: `[{id: "12345678-abcd-..."}]`.
+    type: complex
+    default: []
 
 targets:
   dev:
     default: true
     mode: development
     workspace:
-      profile: DEFAULT
+      profile: ${var.databricks_profile}
     variables:
       catalog: hls_omop_dev
+      project_profile: omop-cdm-10K  # faster iteration on the small Synthea dataset
+
+  staging:
+    mode: development
+    workspace:
+      profile: ${var.databricks_profile}
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: hls_omop_staging
+      project_profile: omop-cdm-100K
 
   prod:
     mode: production
     workspace:
-      profile: DEFAULT
+      profile: ${var.databricks_profile}
       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: hls_omop_prod
       project_profile: omop-cdm-100K
+      schedule_pause_status: UNPAUSED  # nightly refresh is live only on prod
+      # Uncomment and paste in your Slack webhook destination ID(s) to enable:
+      # slack_webhook_destinations:
+      #   - id: "REPLACE_WITH_NOTIFICATION_DESTINATION_ID"
     run_as:
       user_name: a8barreto@gmail.com

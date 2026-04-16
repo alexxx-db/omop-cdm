@@ -1,0 +1,76 @@
+name: Bundle CI
+
+# Validate the Databricks Asset Bundle on every PR that touches it,
+# and deploy to the `staging` target when those changes land on main.
+#
+# Required repository secrets:
+#   DATABRICKS_HOST           — e.g. https://adb-xxx.xx.azuredatabricks.net
+#   DATABRICKS_TOKEN          — PAT or service-principal OAuth token with perms to
+#                               deploy bundles in the target workspace
+#   DATABRICKS_BUNDLE_ENV     — (optional) extra env overrides, unused here
+
+on:
+  pull_request:
+    paths:
+      - "omop-cdm/databricks.yml"
+      - "omop-cdm/resources/**"
+      - "omop-cdm/**/*.py"
+      - "omop-cdm/**/*.sql"
+      - ".github/workflows/bundle-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "omop-cdm/databricks.yml"
+      - "omop-cdm/resources/**"
+      - "omop-cdm/**/*.py"
+      - "omop-cdm/**/*.sql"
+
+defaults:
+  run:
+    working-directory: omop-cdm
+
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+  validate:
+    name: Validate bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate (dev target)
+        run: databricks bundle validate -t dev
+
+      - name: Validate (staging target)
+        run: databricks bundle validate -t staging
+
+      - name: Validate (prod target)
+        run: databricks bundle validate -t prod
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: bundle-deploy-staging
+      cancel-in-progress: false
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Deploy
+        run: databricks bundle deploy -t staging --auto-approve
+
+      - name: Summary
+        run: |
+          echo "Deployed omop-cdm bundle to staging." >> $GITHUB_STEP_SUMMARY
+          echo "Trigger the job with: \`databricks bundle run omop_cdm_build -t staging\`" >> $GITHUB_STEP_SUMMARY
