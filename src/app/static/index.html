@@ -9,8 +9,16 @@
 <body>
   <header>
     <h1>OMOP Explorer</h1>
-    <div id="whoami" class="muted"></div>
+    <div class="header-right">
+      <button id="diagnostics-btn" class="ghost" title="Run user-scoped checks against UC + warehouse">Diagnostics</button>
+      <div id="whoami" class="muted"></div>
+    </div>
   </header>
+
+  <section id="diagnostics-panel" hidden>
+    <h2>Diagnostics</h2>
+    <div id="diagnostics-out" class="out"></div>
+  </section>
 
   <nav>
     <button class="tab active" data-view="search">Concept search</button>

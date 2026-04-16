@@ -26,12 +26,112 @@ def test_health(client):
 def test_whoami_local(client):
     resp = client.get("/api/me")
     assert resp.status_code == 200
-    assert resp.json() == {"email": None, "auth_mode": "local"}
+    body = resp.json()
+    assert body["email"] is None
+    assert body["auth_mode"] == "local"
+    assert body["catalog"] == "test_cat"
+    assert body["schema"] == "test_schema"
+    assert body["warehouse_id"] == "test_wh_id"
+    assert "checks" not in body
 
 
 def test_whoami_obo_from_header(client):
     resp = client.get("/api/me", headers={"X-Forwarded-Email": "alice@example.com"})
-    assert resp.json() == {"email": "alice@example.com", "auth_mode": "obo"}
+    body = resp.json()
+    assert body["email"] == "alice@example.com"
+    assert body["auth_mode"] == "obo"
+
+
+def test_whoami_diagnostics_all_ok(client, fake_run, monkeypatch, app_module):
+    # _run is called 5 times in _diagnostics (SELECT 1, SHOW SCHEMAS, SHOW TABLES,
+    # SHOW USER FUNCTIONS, omop_top_conditions). The 6th check uses the SDK.
+    from unittest.mock import MagicMock
+
+    fake_run.side_effect = [
+        [{"ok": 1}],
+        [{"databaseName": "bronze"}, {"databaseName": "omop531"}],
+        [{"tableName": "person"}, {"tableName": "concept"}],
+        [{"function": f"test_cat.test_schema.{f}"} for f in app_module.OMOP_FUNCTIONS],
+        [{"condition_concept_id": 1, "n_patients": 10}],
+    ]
+    mock_wh = MagicMock()
+    mock_wh.state = "RUNNING"
+    mock_wh.cluster_size = "2X-Small"
+    mock_ws = MagicMock()
+    mock_ws.warehouses.get.return_value = mock_wh
+    monkeypatch.setattr(app_module, "WorkspaceClient", lambda **_: mock_ws)
+
+    resp = client.get("/api/me?include_diagnostics=true")
+    assert resp.status_code == 200
+    checks = resp.json()["checks"]
+    assert len(checks) == 6
+    statuses = [c["status"] for c in checks]
+    assert statuses == ["ok"] * 6
+    # Spot-check content
+    assert any("RUNNING" in c["detail"] for c in checks)
+    assert any("round-trip" in c["detail"] for c in checks)
+    assert any("all 6 functions" in c["detail"] for c in checks)
+
+
+def test_whoami_diagnostics_missing_functions(client, fake_run, monkeypatch, app_module):
+    from unittest.mock import MagicMock
+
+    # Everything before the SHOW FUNCTIONS call succeeds; then return a partial list.
+    fake_run.side_effect = [
+        [{"ok": 1}],
+        [{"databaseName": "omop531"}],
+        [{"tableName": "person"}],
+        [{"function": "test_cat.test_schema.omop_concept_search"}],  # only 1 of 6
+        [{"condition_concept_id": 1, "n_patients": 10}],
+    ]
+    mock_ws = MagicMock()
+    mock_ws.warehouses.get.return_value = MagicMock(state="RUNNING", cluster_size=None)
+    monkeypatch.setattr(app_module, "WorkspaceClient", lambda **_: mock_ws)
+
+    resp = client.get("/api/me?include_diagnostics=true")
+    checks = resp.json()["checks"]
+    fn_check = next(c for c in checks if c["name"] == "OMOP functions visible")
+    assert fn_check["status"] == "ok"  # the probe itself ran; the detail reports the gap
+    assert "missing" in fn_check["detail"]
+    assert "omop_top_conditions" in fn_check["detail"]
+
+
+def test_whoami_diagnostics_warehouse_failure(client, fake_run, monkeypatch, app_module):
+    from unittest.mock import MagicMock
+
+    mock_ws = MagicMock()
+    mock_ws.warehouses.get.side_effect = PermissionError("no access")
+    monkeypatch.setattr(app_module, "WorkspaceClient", lambda **_: mock_ws)
+
+    # Remaining _run-based checks succeed with minimal shapes
+    fake_run.side_effect = [
+        [{"ok": 1}],
+        [{"databaseName": "omop531"}],
+        [{"tableName": "person"}],
+        [{"function": f"test_cat.test_schema.{f}"} for f in app_module.OMOP_FUNCTIONS],
+        [{"condition_concept_id": 1}],
+    ]
+
+    resp = client.get("/api/me?include_diagnostics=true")
+    checks = resp.json()["checks"]
+    wh_check = next(c for c in checks if c["name"] == "Warehouse reachable")
+    assert wh_check["status"] == "fail"
+    assert "PermissionError" in wh_check["detail"]
+
+
+def test_whoami_diagnostics_auth_failure_returns_single_check(client, app_module, monkeypatch):
+    # Strip the default OBO bypass so _resolve_token raises 401
+    from fastapi import HTTPException as _HE
+
+    def raise_auth(_hdr):
+        raise _HE(status_code=401, detail="no creds")
+
+    monkeypatch.setattr(app_module, "_resolve_token", raise_auth)
+
+    resp = client.get("/api/me?include_diagnostics=true")
+    assert resp.status_code == 200  # endpoint still responds; failure is in the body
+    body = resp.json()
+    assert body["checks"] == [{"name": "Authentication", "status": "fail", "detail": "no creds"}]
 
 
 # ---------- concept search ----------

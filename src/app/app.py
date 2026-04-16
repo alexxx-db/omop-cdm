@@ -20,7 +20,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
 
+import time
+
 from databricks import sql
+from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -131,13 +134,114 @@ def health() -> dict[str, str]:
     }
 
 
+OMOP_FUNCTIONS = (
+    "omop_concept_search",
+    "omop_concept_descendants",
+    "omop_patient_summary",
+    "omop_condition_cohort_size",
+    "omop_drug_timeline",
+    "omop_top_conditions",
+)
+
+
+def _check(name: str, fn: Any) -> dict[str, Any]:
+    """Run a single diagnostic probe and normalize its result shape."""
+    try:
+        detail = fn() or ""
+        return {"name": name, "status": "ok", "detail": detail}
+    except HTTPException as exc:
+        return {"name": name, "status": "fail", "detail": str(exc.detail)[:400]}
+    except Exception as exc:  # any SDK / SQL / network error
+        return {"name": name, "status": "fail", "detail": f"{type(exc).__name__}: {exc}"[:400]}
+
+
+def _diagnostics(token: str) -> list[dict[str, Any]]:
+    """Run 6 probes against UC + warehouse using the caller's token."""
+    checks: list[dict[str, Any]] = []
+
+    def warehouse_state() -> str:
+        host = os.environ.get("DATABRICKS_HOST") or _sdk_config().host
+        w = WorkspaceClient(host=host, token=token)
+        wh = w.warehouses.get(id=WAREHOUSE_ID)
+        return f"state={wh.state}, size={wh.cluster_size or 'serverless'}"
+
+    def select_one() -> str:
+        t0 = time.perf_counter()
+        rows = _run("SELECT 1 AS ok", {}, token)
+        dt = int((time.perf_counter() - t0) * 1000)
+        if not rows or rows[0].get("ok") != 1:
+            raise RuntimeError(f"unexpected response: {rows!r}")
+        return f"{dt}ms round-trip"
+
+    def catalog_use() -> str:
+        rows = _run(f"SHOW SCHEMAS IN `{CATALOG}`", {}, token)
+        return f"{len(rows)} schema(s) visible"
+
+    def schema_use() -> str:
+        rows = _run(f"SHOW TABLES IN `{CATALOG}`.`{OMOP_SCHEMA}`", {}, token)
+        return f"{len(rows)} table(s) visible"
+
+    def functions_visible() -> str:
+        rows = _run(
+            f"SHOW USER FUNCTIONS IN `{CATALOG}`.`{OMOP_SCHEMA}` LIKE 'omop_*'",
+            {},
+            token,
+        )
+        found = {
+            str(r.get("function") or r.get("Function") or "").split(".")[-1]
+            for r in rows
+        }
+        missing = [f for f in OMOP_FUNCTIONS if f not in found]
+        if missing:
+            return f"{len(OMOP_FUNCTIONS) - len(missing)}/{len(OMOP_FUNCTIONS)} visible — missing: {', '.join(missing)}"
+        return f"all {len(OMOP_FUNCTIONS)} functions visible"
+
+    def function_execute() -> str:
+        rows = _run(f"SELECT * FROM {FQN}.omop_top_conditions(:n)", {"n": 1}, token)
+        return f"returned {len(rows)} row(s)"
+
+    checks.append(_check("Warehouse reachable", warehouse_state))
+    checks.append(_check("SELECT 1 round-trip", select_one))
+    checks.append(_check(f"USE CATALOG `{CATALOG}`", catalog_use))
+    checks.append(_check(f"USE SCHEMA `{OMOP_SCHEMA}`", schema_use))
+    checks.append(_check("OMOP functions visible", functions_visible))
+    checks.append(_check("EXECUTE omop_top_conditions(1)", function_execute))
+    return checks
+
+
 @app.get("/api/me")
-def whoami(x_forwarded_email: str | None = Header(default=None)) -> dict[str, Any]:
-    """Databricks Apps populates X-Forwarded-* headers with the caller's identity."""
-    return {
+def whoami(
+    x_forwarded_email: str | None = Header(default=None),
+    x_forwarded_access_token: str | None = Header(default=None),
+    include_diagnostics: bool = Query(
+        False, description="Run live UC + warehouse probes. Adds latency (~1-3s)."
+    ),
+) -> dict[str, Any]:
+    """Identity + (optional) user-scoped health checks against UC and the warehouse.
+
+    The probes run as the caller — under OBO that's the real user, so failures
+    here surface the actual perm gaps the user is hitting (not the app SP).
+    """
+    auth_mode = "obo" if x_forwarded_email else "local"
+    result: dict[str, Any] = {
         "email": x_forwarded_email,
-        "auth_mode": "obo" if x_forwarded_email else "local",
+        "auth_mode": auth_mode,
+        "catalog": CATALOG,
+        "schema": OMOP_SCHEMA,
+        "warehouse_id": WAREHOUSE_ID,
     }
+    if not include_diagnostics:
+        return result
+
+    try:
+        token = _resolve_token(x_forwarded_access_token)
+    except HTTPException as exc:
+        result["checks"] = [
+            {"name": "Authentication", "status": "fail", "detail": str(exc.detail)}
+        ]
+        return result
+    result["checks"] = _diagnostics(token)
+    return result
 
 
 @app.get("/api/concepts/search")

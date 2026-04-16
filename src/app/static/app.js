@@ -20,6 +20,27 @@ fetch("/api/me")
   })
   .catch(() => {});
 
+// ---------- diagnostics ----------
+$("#diagnostics-btn").addEventListener("click", async () => {
+  const panel = $("#diagnostics-panel");
+  const out = $("#diagnostics-out");
+  panel.hidden = false;
+  out.innerHTML = `<div class="loading">Running checks…</div>`;
+  try {
+    const j = await apiGet("/api/me?include_diagnostics=true");
+    const rows = (j.checks || []).map(
+      (c) => `<div class="check ${c.status}">
+        <span class="badge">${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"}</span>
+        <span class="name">${c.name}</span>
+        <span class="detail">${c.detail || ""}</span>
+      </div>`
+    );
+    out.innerHTML = rows.join("") || `<div class="muted">No checks returned.</div>`;
+  } catch (err) {
+    renderError(out, err);
+  }
+});
+
 // ---------- fetch helpers ----------
 async function apiGet(path) {
   const resp = await fetch(path);
