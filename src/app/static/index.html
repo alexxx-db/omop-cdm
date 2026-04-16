@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OMOP Explorer</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>OMOP Explorer</h1>
+    <div id="whoami" class="muted"></div>
+  </header>
+
+  <nav>
+    <button class="tab active" data-view="search">Concept search</button>
+    <button class="tab" data-view="patient">Patient lookup</button>
+    <button class="tab" data-view="cohort">Cohort sizer</button>
+    <button class="tab" data-view="top">Top conditions</button>
+  </nav>
+
+  <main>
+    <!-- 1. Concept search -->
+    <section id="view-search" class="view active">
+      <h2>Concept search</h2>
+      <form id="search-form">
+        <input name="q" placeholder="e.g. diabetes" minlength="2" required />
+        <input name="vocab" placeholder="Vocabulary (SNOMED, LOINC, …) — optional" />
+        <button type="submit">Search</button>
+      </form>
+      <div id="search-out" class="out"></div>
+    </section>
+
+    <!-- 2. Patient lookup -->
+    <section id="view-patient" class="view">
+      <h2>Patient lookup</h2>
+      <form id="patient-form">
+        <input name="person_id" type="number" placeholder="person_id" required />
+        <button type="submit">Load</button>
+      </form>
+      <div id="patient-summary" class="out"></div>
+      <h3 class="muted">Drug timeline</h3>
+      <div id="patient-drugs" class="out"></div>
+    </section>
+
+    <!-- 3. Cohort sizer -->
+    <section id="view-cohort" class="view">
+      <h2>Cohort sizer</h2>
+      <p class="muted">
+        Returns the count of distinct patients with the given condition concept
+        id or any of its descendants.
+      </p>
+      <form id="cohort-form">
+        <input name="condition_concept_id" type="number" placeholder="condition_concept_id" required />
+        <button type="submit">Size cohort</button>
+      </form>
+      <div id="cohort-out" class="out"></div>
+    </section>
+
+    <!-- 4. Top conditions -->
+    <section id="view-top" class="view">
+      <h2>Top conditions</h2>
+      <form id="top-form">
+        <input name="top_n" type="number" value="20" min="1" max="200" />
+        <button type="submit">Load</button>
+      </form>
+      <div id="top-out" class="out"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

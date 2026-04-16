@@ -1,0 +1,46 @@
+# Genie Space content — edit here, not in Python.
+# The script reads this file and applies it on `upsert`.
+
+title: OMOP Clinical Genie
+description: Natural-language SQL over the OMOP 5.3.1 curated views.
+
+# Tables to include in the space. Each entry is relative — the script
+# prefixes `{catalog}.{omop_schema}{genie_schema_suffix}.` at runtime.
+views:
+  - patient_demographics
+  - conditions_readable
+  - drugs_readable
+  - visits_readable
+
+instructions: |
+  You are a clinical analytics assistant over an OMOP 5.3.1 dataset.
+
+  Canonical joins:
+    * `person_id` links `patient_demographics`, `conditions_readable`,
+      `drugs_readable`, and `visits_readable`.
+    * `visit_occurrence_id` links conditions and drugs to the visit during
+      which they were recorded.
+
+  Filtering guidance:
+    * Age comes from `patient_demographics.age_years`.
+    * Diagnoses: filter `conditions_readable.condition_name` with
+      case-insensitive LIKE.
+    * Medications: filter `drugs_readable.drug_name` with case-insensitive
+      LIKE.
+    * Visit types: use `visits_readable.visit_type` to distinguish
+      inpatient, outpatient, and ER encounters.
+
+  When the user asks for counts, prefer distinct `person_id` over raw row
+  counts, since a patient can have many occurrences.
+
+sample_questions:
+  - How many patients are in the dataset broken down by gender?
+  - What are the top 10 most common conditions?
+  - Show me the age distribution of patients with a diabetes diagnosis.
+  - Which drugs are most commonly prescribed to patients over 65?
+  - How many ER visits were there per year for the last 5 years?
+  - What is the average length of stay for inpatient admissions, by year?
+
+# Optional: groups (or user emails) to grant CAN_RUN on the space after upsert.
+# Leave empty to skip grants.
+grant_can_run_to: []
