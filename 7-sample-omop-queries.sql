@@ -12,15 +12,29 @@
 
 -- COMMAND ----------
 
-DESCRIBE DATABASE OMOP531
+-- MAGIC %python
+-- MAGIC dbutils.widgets.text("catalog", "hls_omop_dev", "Unity Catalog")
+-- MAGIC dbutils.widgets.text("omop_schema", "omop531", "OMOP CDM schema")
+-- MAGIC dbutils.widgets.text("results_schema", "omop531_results", "Results schema")
+-- MAGIC
+-- MAGIC catalog = dbutils.widgets.get("catalog")
+-- MAGIC omop_schema = dbutils.widgets.get("omop_schema")
+-- MAGIC results_schema = dbutils.widgets.get("results_schema")
+-- MAGIC
+-- MAGIC spark.sql(f"USE CATALOG `{catalog}`")
+-- MAGIC spark.sql(f"USE SCHEMA `{omop_schema}`")
+-- MAGIC print(f"Running sample queries against {catalog}.{omop_schema}")
 
 -- COMMAND ----------
 
-select * from omop531.source_to_standard_vocab_map
+-- MAGIC %python
+-- MAGIC display(spark.sql(f"DESCRIBE SCHEMA EXTENDED `{catalog}`.`{omop_schema}`"))
 
 -- COMMAND ----------
 
-USE OMOP531
+-- `source_to_standard_vocab_map` is created by notebook 3 in the OMOP schema;
+-- since we've already USE'd it above, the bare name resolves correctly.
+SELECT * FROM source_to_standard_vocab_map LIMIT 100
 
 -- COMMAND ----------
 

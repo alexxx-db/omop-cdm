@@ -25,13 +25,15 @@ resources:
         - name: source_path
           default: ""
 
-      # Shared serverless environment for all Python notebook tasks.
-      # SQL notebooks don't need environment_key.
+      # Shared serverless environment. Assigned to every task that executes
+      # Python code — including the SQL notebooks, whose config headers use
+      # `%python` cells to read widgets and set the active catalog/schema.
       environments:
         - environment_key: omop_env
           spec:
             client: "2"
-            dependencies: []
+            dependencies:
+              - plotly==5.24.1
 
       tasks:
         - task_key: readme
@@ -72,14 +74,15 @@ resources:
         - task_key: cdm_setup
           depends_on:
             - task_key: data_ingest
+          environment_key: omop_env
           notebook_task:
             notebook_path: ../2-omop531-cdm-setup.sql
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              omop_schema: ${var.omop_schema}
-              results_schema: ${var.results_schema}
-              bronze_schema: ${var.bronze_schema}
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              results_schema: "{{job.parameters.results_schema}}"
+              bronze_schema: "{{job.parameters.bronze_schema}}"
 
         - task_key: vocab_setup
           depends_on:
@@ -89,20 +92,22 @@ resources:
             notebook_path: ../3-omop-vocab-setup.sql
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              omop_schema: ${var.omop_schema}
-              landing_volume: ${var.landing_volume}
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              bronze_schema: "{{job.parameters.bronze_schema}}"
+              landing_volume: "{{job.parameters.landing_volume}}"
 
         - task_key: etl_synthea
           depends_on:
             - task_key: vocab_setup
+          environment_key: omop_env
           notebook_task:
             notebook_path: ../4-omop531-etl-synthea.sql
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              omop_schema: ${var.omop_schema}
+              catalog: "{{job.parameters.catalog}}"
+              bronze_schema: "{{job.parameters.bronze_schema}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
 
         - task_key: chf_cohort
           depends_on:
@@ -112,9 +117,9 @@ resources:
             notebook_path: ../5-CHF-cohort-building.py
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              omop_schema: ${var.omop_schema}
-              results_schema: ${var.results_schema}
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              results_schema: "{{job.parameters.results_schema}}"
 
         - task_key: drug_analysis
           depends_on:
@@ -124,20 +129,21 @@ resources:
             notebook_path: ../6-drug-analysis.py
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              omop_schema: ${var.omop_schema}
-              results_schema: ${var.results_schema}
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              results_schema: "{{job.parameters.results_schema}}"
 
         - task_key: sample_queries
           depends_on:
             - task_key: drug_analysis
+          environment_key: omop_env
           notebook_task:
             notebook_path: ../7-sample-omop-queries.sql
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
-              omop_schema: ${var.omop_schema}
-              results_schema: ${var.results_schema}
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+              results_schema: "{{job.parameters.results_schema}}"
 
       permissions:
         - level: CAN_VIEW
