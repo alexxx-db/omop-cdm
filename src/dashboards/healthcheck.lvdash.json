@@ -1,0 +1,363 @@
+{
+  "datasets": [
+    {
+      "name": "status_by_time",
+      "displayName": "Probe Status by Timestamp (24h)",
+      "queryLines": [
+        "SELECT ",
+        "  DATE_TRUNC('HOUR', CAST(timestamp AS TIMESTAMP)) AS hour, ",
+        "  status, ",
+        "  COUNT(*) AS probe_count ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        "WHERE CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) ",
+        "GROUP BY hour, status ",
+        "ORDER BY hour ASC "
+      ]
+    },
+    {
+      "name": "current_failures",
+      "displayName": "Current Probe Failure Count",
+      "queryLines": [
+        "WITH latest_run AS ( ",
+        "  SELECT MAX(timestamp) AS ts ",
+        "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        ") ",
+        "SELECT ",
+        "  COUNT(CASE WHEN status = 'fail' THEN 1 END) AS failures, ",
+        "  COUNT(*) AS total_probes, ",
+        "  MAX(h.timestamp) AS last_run ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
+        "INNER JOIN latest_run lr ON h.timestamp = lr.ts "
+      ]
+    },
+    {
+      "name": "current_ok",
+      "displayName": "Current Passing Probes",
+      "queryLines": [
+        "WITH latest_run AS ( ",
+        "  SELECT MAX(timestamp) AS ts ",
+        "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        ") ",
+        "SELECT ",
+        "  COUNT(CASE WHEN status = 'ok' THEN 1 END) AS passing ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
+        "INNER JOIN latest_run lr ON h.timestamp = lr.ts "
+      ]
+    },
+    {
+      "name": "avg_latency",
+      "displayName": "Avg Probe Latency (24h)",
+      "queryLines": [
+        "SELECT ",
+        "  ROUND(AVG(elapsed_ms), 0) AS avg_ms ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        "WHERE CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) "
+      ]
+    },
+    {
+      "name": "latest_detail",
+      "displayName": "Latest Run Detail",
+      "queryLines": [
+        "WITH latest_run AS ( ",
+        "  SELECT MAX(timestamp) AS ts ",
+        "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        ") ",
+        "SELECT ",
+        "  h.probe, ",
+        "  h.status, ",
+        "  h.detail, ",
+        "  h.elapsed_ms, ",
+        "  h.timestamp ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
+        "INNER JOIN latest_run lr ON h.timestamp = lr.ts ",
+        "ORDER BY h.status DESC, h.probe ASC "
+      ]
+    },
+    {
+      "name": "failure_history",
+      "displayName": "Failure History (24h)",
+      "queryLines": [
+        "SELECT ",
+        "  timestamp, ",
+        "  probe, ",
+        "  detail, ",
+        "  elapsed_ms ",
+        "FROM ${catalog}.${omop_schema}._healthcheck_log ",
+        "WHERE status = 'fail' ",
+        "  AND CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) ",
+        "ORDER BY timestamp DESC "
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "healthcheck",
+      "displayName": "OMOP Healthcheck",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": ["## OMOP Healthcheck Monitor"]
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 6, "height": 1}
+        },
+        {
+          "widget": {
+            "name": "subtitle",
+            "multilineTextboxSpec": {
+              "lines": ["Scheduled probe results from `_healthcheck_log`. Data refreshes with each healthcheck run (default: every 15 min on prod)."]
+            }
+          },
+          "position": {"x": 0, "y": 1, "width": 6, "height": 1}
+        },
+        {
+          "widget": {
+            "name": "counter-failures",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "current_failures",
+                  "fields": [
+                    {"name": "failures", "expression": "`failures`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "failures",
+                  "displayName": "Failed Probes"
+                }
+              },
+              "frame": {
+                "title": "Current Failures",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 0, "y": 2, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "counter-passing",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "current_ok",
+                  "fields": [
+                    {"name": "passing", "expression": "`passing`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "passing",
+                  "displayName": "Passing Probes"
+                }
+              },
+              "frame": {
+                "title": "Current Passing",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 2, "y": 2, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "counter-latency",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "avg_latency",
+                  "fields": [
+                    {"name": "avg_ms", "expression": "`avg_ms`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_ms",
+                  "displayName": "ms"
+                }
+              },
+              "frame": {
+                "title": "Avg Probe Latency (24h)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 4, "y": 2, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "section-trends",
+            "multilineTextboxSpec": {
+              "lines": ["### Probe Status — Last 24 Hours"]
+            }
+          },
+          "position": {"x": 0, "y": 5, "width": 6, "height": 1}
+        },
+        {
+          "widget": {
+            "name": "stacked-bar-status",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "status_by_time",
+                  "fields": [
+                    {"name": "hour", "expression": "`hour`"},
+                    {"name": "status", "expression": "`status`"},
+                    {"name": "probe_count", "expression": "`probe_count`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "hour",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Time (hour)"
+                },
+                "y": {
+                  "fieldName": "probe_count",
+                  "scale": {"type": "quantitative"},
+                  "displayName": "Probe Count"
+                },
+                "color": {
+                  "fieldName": "status",
+                  "scale": {"type": "categorical"},
+                  "displayName": "Status"
+                }
+              },
+              "frame": {
+                "title": "Probe Results by Hour",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 0, "y": 6, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "section-latest",
+            "multilineTextboxSpec": {
+              "lines": ["### Latest Run"]
+            }
+          },
+          "position": {"x": 0, "y": 12, "width": 6, "height": 1}
+        },
+        {
+          "widget": {
+            "name": "table-latest",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_detail",
+                  "fields": [
+                    {"name": "probe", "expression": "`probe`"},
+                    {"name": "status", "expression": "`status`"},
+                    {"name": "detail", "expression": "`detail`"},
+                    {"name": "elapsed_ms", "expression": "`elapsed_ms`"},
+                    {"name": "timestamp", "expression": "`timestamp`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "status", "displayName": "Status"},
+                  {"fieldName": "probe", "displayName": "Probe"},
+                  {"fieldName": "detail", "displayName": "Detail"},
+                  {"fieldName": "elapsed_ms", "displayName": "ms"},
+                  {"fieldName": "timestamp", "displayName": "Timestamp"}
+                ]
+              },
+              "frame": {
+                "title": "Per-Probe Results",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 0, "y": 13, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "section-failures",
+            "multilineTextboxSpec": {
+              "lines": ["### Failure Log (24h)"]
+            }
+          },
+          "position": {"x": 0, "y": 19, "width": 6, "height": 1}
+        },
+        {
+          "widget": {
+            "name": "table-failures",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "failure_history",
+                  "fields": [
+                    {"name": "timestamp", "expression": "`timestamp`"},
+                    {"name": "probe", "expression": "`probe`"},
+                    {"name": "detail", "expression": "`detail`"},
+                    {"name": "elapsed_ms", "expression": "`elapsed_ms`"}
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "timestamp", "displayName": "When"},
+                  {"fieldName": "probe", "displayName": "Probe"},
+                  {"fieldName": "detail", "displayName": "Error Detail"},
+                  {"fieldName": "elapsed_ms", "displayName": "ms"}
+                ]
+              },
+              "frame": {
+                "title": "Recent Failures",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {"x": 0, "y": 20, "width": 6, "height": 6}
+        }
+      ]
+    }
+  ]
+}
