@@ -55,6 +55,11 @@ variables:
     description: "Profile from ~/.databrickscfg used for deploy-time auth."
     default: DEFAULT
 
+  warehouse_id:
+    description: "SQL warehouse ID used by the Databricks App and Genie Space to run queries."
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
+
   notifications_email:
     description: "Email for job failure notifications."
     default: a8barreto@gmail.com

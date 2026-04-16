@@ -145,6 +145,31 @@ resources:
               omop_schema: "{{job.parameters.omop_schema}}"
               results_schema: "{{job.parameters.results_schema}}"
 
+        # Functions + Genie views depend only on the OMOP tables being
+        # populated (via etl_synthea), so they run in parallel with the
+        # analytics branch rather than serialized after it.
+        - task_key: register_functions
+          depends_on:
+            - task_key: etl_synthea
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../src/functions/omop_functions.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+
+        - task_key: register_genie_views
+          depends_on:
+            - task_key: etl_synthea
+          environment_key: omop_env
+          notebook_task:
+            notebook_path: ../src/views/genie_views.sql
+            source: WORKSPACE
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              omop_schema: "{{job.parameters.omop_schema}}"
+
       schedule:
         quartz_cron_expression: ${var.schedule_cron}
         timezone_id: ${var.schedule_timezone}

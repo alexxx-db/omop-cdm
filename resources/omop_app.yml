@@ -1,0 +1,18 @@
+resources:
+  apps:
+    omop_explorer:
+      name: omop-explorer-${bundle.target}
+      description: "Thin REST/UI layer over the OMOP UC functions — serves as a working example for building healthcare apps against the CDM."
+      source_code_path: ../src/app
+      resources:
+        - name: warehouse
+          description: "SQL warehouse used to invoke UC functions."
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: omop_catalog
+          description: "OMOP Unity Catalog — needs USE CATALOG + USE SCHEMA + EXECUTE on the functions."
+          uc_securable:
+            securable_full_name: ${var.catalog}
+            securable_type: CATALOG
+            permission: USE_CATALOG
