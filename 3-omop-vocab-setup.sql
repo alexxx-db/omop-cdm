@@ -52,8 +52,6 @@
 
 -- MAGIC %python
 -- MAGIC from pyspark.sql.functions import to_date
--- MAGIC spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
--- MAGIC spark.conf.set("spark.sql.legacy.parquet.datetimeRebaseModeInWrite", "LEGACY")
 -- MAGIC
 -- MAGIC vocab_tables = [
 -- MAGIC     "CONCEPT", "VOCABULARY", "CONCEPT_ANCESTOR", "CONCEPT_RELATIONSHIP",
@@ -105,9 +103,7 @@
 
 -- COMMAND ----------
 
-DROP TABLE IF EXISTS source_to_standard_vocab_map;
-
-CREATE TABLE source_to_standard_vocab_map AS WITH CTE_VOCAB_MAP AS (
+CREATE OR REPLACE TABLE source_to_standard_vocab_map AS WITH CTE_VOCAB_MAP AS (
   SELECT
     c.concept_code AS SOURCE_CODE,
     c.concept_id AS SOURCE_CONCEPT_ID,
@@ -172,9 +168,7 @@ SELECT * FROM source_to_standard_vocab_map LIMIT 100
 
 -- COMMAND ----------
 
-DROP TABLE IF EXISTS source_to_source_vocab_map
-;
-CREATE TABLE source_to_source_vocab_map AS WITH CTE_VOCAB_MAP AS (
+CREATE OR REPLACE TABLE source_to_source_vocab_map AS WITH CTE_VOCAB_MAP AS (
   SELECT
     c.concept_code AS SOURCE_CODE,
     c.concept_id AS SOURCE_CONCEPT_ID,

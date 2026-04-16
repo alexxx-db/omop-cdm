@@ -174,9 +174,10 @@ else:
 # COMMAND ----------
 
 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+_ts = datetime.now(timezone.utc)
 results_df = spark.createDataFrame(
-    [(now, p.name, p.status, p.detail, p.elapsed_ms) for p in probes],
-    ["timestamp", "probe", "status", "detail", "elapsed_ms"],
+    [(_ts, p.name, p.status, p.detail, p.elapsed_ms) for p in probes],
+    "check_time: timestamp, probe: string, status: string, detail: string, elapsed_ms: int",
 )
 display(results_df)
 
@@ -186,12 +187,12 @@ display(results_df)
 healthcheck_table = f"`{catalog}`.`{omop_schema}`.`_healthcheck_log`"
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {healthcheck_table} (
-        timestamp STRING,
+        check_time TIMESTAMP,
         probe STRING,
         status STRING,
         detail STRING,
         elapsed_ms INT
-    ) USING DELTA
+    )
     TBLPROPERTIES (delta.autoOptimize.optimizeWrite = true)
 """)
 results_df.write.mode("append").saveAsTable(healthcheck_table)

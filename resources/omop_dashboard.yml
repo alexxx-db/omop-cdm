@@ -1,3 +1,4 @@
+# Requires Databricks CLI >= 0.281.0 for dataset_catalog / dataset_schema support.
 resources:
   dashboards:
     healthcheck_dashboard:

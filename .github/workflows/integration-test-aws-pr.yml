@@ -1,7 +1,7 @@
 name: AWS integration test PR
 
 on:
- pull_request:
+  workflow_dispatch:  # Disabled — legacy accelerator workflow. Use bundle-ci.yml instead.
 
 jobs:
  run-databricks-notebook:

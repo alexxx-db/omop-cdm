@@ -36,14 +36,7 @@ resources:
               - plotly==5.24.1
 
       tasks:
-        - task_key: readme
-          notebook_task:
-            notebook_path: ../0-README.py
-            source: WORKSPACE
-
         - task_key: setup
-          depends_on:
-            - task_key: readme
           environment_key: omop_env
           notebook_task:
             notebook_path: ../00-setup.py

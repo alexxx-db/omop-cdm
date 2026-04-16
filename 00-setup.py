@@ -67,7 +67,7 @@ spark.sql(
 # MAGIC | `omop-cdm-10K` | `s3://hls-eng-data-public/data/synthea/` | ~10K patients |
 # MAGIC | `psm` | `s3://hls-eng-data-public/data/rwe/dbx-covid-sim/` | COVID sim |
 # MAGIC
-# MAGIC To stage: `databricks fs cp -r s3://.../ dbfs:/Volumes/<catalog>/<bronze_schema>/<volume>/` or use the UC Volume browser.
+# MAGIC To stage: `databricks fs cp -r s3://.../ /Volumes/<catalog>/<bronze_schema>/<volume>/` or use the UC Volume browser.
 
 # COMMAND ----------
 

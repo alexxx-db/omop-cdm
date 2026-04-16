@@ -5,11 +5,11 @@
       "displayName": "Probe Status by Timestamp (24h)",
       "queryLines": [
         "SELECT ",
-        "  DATE_TRUNC('HOUR', CAST(timestamp AS TIMESTAMP)) AS hour, ",
+        "  DATE_TRUNC('HOUR', `check_time`) AS hour, ",
         "  status, ",
         "  COUNT(*) AS probe_count ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log ",
-        "WHERE CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) ",
+        "WHERE check_time >= date_sub(current_timestamp(), 1) ",
         "GROUP BY hour, status ",
         "ORDER BY hour ASC "
       ]
@@ -19,15 +19,15 @@
       "displayName": "Current Probe Failure Count",
       "queryLines": [
         "WITH latest_run AS ( ",
-        "  SELECT MAX(timestamp) AS ts ",
+        "  SELECT MAX(check_time) AS ts ",
         "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
         ") ",
         "SELECT ",
         "  COUNT(CASE WHEN status = 'fail' THEN 1 END) AS failures, ",
         "  COUNT(*) AS total_probes, ",
-        "  MAX(h.timestamp) AS last_run ",
+        "  MAX(h.check_time) AS last_run ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
-        "INNER JOIN latest_run lr ON h.timestamp = lr.ts "
+        "INNER JOIN latest_run lr ON h.check_time = lr.ts "
       ]
     },
     {
@@ -35,13 +35,13 @@
       "displayName": "Current Passing Probes",
       "queryLines": [
         "WITH latest_run AS ( ",
-        "  SELECT MAX(timestamp) AS ts ",
+        "  SELECT MAX(check_time) AS ts ",
         "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
         ") ",
         "SELECT ",
         "  COUNT(CASE WHEN status = 'ok' THEN 1 END) AS passing ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
-        "INNER JOIN latest_run lr ON h.timestamp = lr.ts "
+        "INNER JOIN latest_run lr ON h.check_time = lr.ts "
       ]
     },
     {
@@ -51,7 +51,7 @@
         "SELECT ",
         "  ROUND(AVG(elapsed_ms), 0) AS avg_ms ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log ",
-        "WHERE CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) "
+        "WHERE check_time >= date_sub(current_timestamp(), 1) "
       ]
     },
     {
@@ -59,7 +59,7 @@
       "displayName": "Latest Run Detail",
       "queryLines": [
         "WITH latest_run AS ( ",
-        "  SELECT MAX(timestamp) AS ts ",
+        "  SELECT MAX(check_time) AS ts ",
         "  FROM ${catalog}.${omop_schema}._healthcheck_log ",
         ") ",
         "SELECT ",
@@ -67,9 +67,9 @@
         "  h.status, ",
         "  h.detail, ",
         "  h.elapsed_ms, ",
-        "  h.timestamp ",
+        "  h.check_time ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log h ",
-        "INNER JOIN latest_run lr ON h.timestamp = lr.ts ",
+        "INNER JOIN latest_run lr ON h.check_time = lr.ts ",
         "ORDER BY h.status DESC, h.probe ASC "
       ]
     },
@@ -78,14 +78,14 @@
       "displayName": "Failure History (24h)",
       "queryLines": [
         "SELECT ",
-        "  timestamp, ",
+        "  check_time, ",
         "  probe, ",
         "  detail, ",
         "  elapsed_ms ",
         "FROM ${catalog}.${omop_schema}._healthcheck_log ",
         "WHERE status = 'fail' ",
-        "  AND CAST(timestamp AS TIMESTAMP) >= date_sub(current_timestamp(), 1) ",
-        "ORDER BY timestamp DESC "
+        "  AND check_time >= date_sub(current_timestamp(), 1) ",
+        "ORDER BY check_time DESC "
       ]
     }
   ],
@@ -285,7 +285,7 @@
                     {"name": "status", "expression": "`status`"},
                     {"name": "detail", "expression": "`detail`"},
                     {"name": "elapsed_ms", "expression": "`elapsed_ms`"},
-                    {"name": "timestamp", "expression": "`timestamp`"}
+                    {"name": "check_time", "expression": "`check_time`"}
                   ],
                   "disaggregated": true
                 }
@@ -300,7 +300,7 @@
                   {"fieldName": "probe", "displayName": "Probe"},
                   {"fieldName": "detail", "displayName": "Detail"},
                   {"fieldName": "elapsed_ms", "displayName": "ms"},
-                  {"fieldName": "timestamp", "displayName": "Timestamp"}
+                  {"fieldName": "check_time", "displayName": "Timestamp"}
                 ]
               },
               "frame": {
@@ -329,7 +329,7 @@
                 "query": {
                   "datasetName": "failure_history",
                   "fields": [
-                    {"name": "timestamp", "expression": "`timestamp`"},
+                    {"name": "check_time", "expression": "`check_time`"},
                     {"name": "probe", "expression": "`probe`"},
                     {"name": "detail", "expression": "`detail`"},
                     {"name": "elapsed_ms", "expression": "`elapsed_ms`"}
@@ -343,7 +343,7 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {"fieldName": "timestamp", "displayName": "When"},
+                  {"fieldName": "check_time", "displayName": "When"},
                   {"fieldName": "probe", "displayName": "Probe"},
                   {"fieldName": "detail", "displayName": "Error Detail"},
                   {"fieldName": "elapsed_ms", "displayName": "ms"}

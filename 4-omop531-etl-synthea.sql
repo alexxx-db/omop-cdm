@@ -261,8 +261,7 @@ GROUP BY
 
 -- COMMAND ----------
 
-DROP TABLE IF EXISTS all_visits;
-CREATE TABLE all_visits
+CREATE OR REPLACE TABLE all_visits AS
 SELECT
   *,
   ROW_NUMBER() OVER(
@@ -304,8 +303,7 @@ LIMIT
 
 -- COMMAND ----------
 
-DROP TABLE IF EXISTS assign_all_visit_ids;
-CREATE TABLE assign_all_visit_ids
+CREATE OR REPLACE TABLE assign_all_visit_ids AS
 SELECT
   E.id AS encounter_id,
   E.patient as person_source_value,
@@ -356,8 +354,7 @@ SELECT * FROM assign_all_visit_ids LIMIT 100;
 
 -- COMMAND ----------
 
-DROP TABLE IF EXISTS final_visit_ids;
-CREATE TABLE final_visit_ids
+CREATE OR REPLACE TABLE final_visit_ids AS
 SELECT encounter_id, VISIT_OCCURRENCE_ID_NEW
 FROM(
 	SELECT *, ROW_NUMBER () OVER (PARTITION BY encounter_id ORDER BY PRIORITY) AS RN
